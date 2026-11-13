@@ -1,0 +1,129 @@
+name: Release APK
+
+# Tag a version to ship it:
+#     git tag v0.2.0 && git push origin v0.2.0
+#
+# Builds a signed release APK and publishes it as a GitHub Release. Installed
+# apps find it on their next launch over WiFi (see lib/services/update_service.dart).
+#
+# Requires four repository secrets -- Settings > Secrets and variables > Actions:
+#   ANDROID_KEYSTORE_BASE64    the keystore, base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_PASSWORD
+#   ANDROID_KEY_ALIAS
+# None of them ever appear in the repository or in the built APK.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.2.0) -- builds without publishing'
+        required: true
+
+permissions:
+  contents: write        # needed to create the Release; nothing else
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Quality gates run before anything is signed or published: a tag must
+      # never produce a release that would not have passed on main.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Write signing config
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. Add the four signing secrets before tagging a release."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-key.jks"
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/upload-key.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          EOF
+
+      # PM25_APP_VERSION is what the running app compares against the latest
+      # release tag, so it must match the tag being built.
+      - name: Build signed APK
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.version.outputs.version }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=PM25_APP_VERSION=${{ steps.version.outputs.version }}
+
+      - name: Name the artifact
+        id: artifact
+        run: |
+          NAME="pm25-air-quality-${{ steps.version.outputs.version }}.apk"
+          mv build/app/outputs/flutter-apk/app-release.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          sha256sum "$NAME" | tee "$NAME.sha256"
+
+      - name: Clean up signing material
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/upload-key.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.artifact.outputs.name }}
+            ${{ steps.artifact.outputs.name }}.sha256
+
+      # Only a real tag publishes. workflow_dispatch builds for checking.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.artifact.outputs.name }}
+            ${{ steps.artifact.outputs.name }}.sha256
+          generate_release_notes: true
+          body: |
+            PM2.5 Air Quality ${{ steps.version.outputs.version }}
+
+            Install the APK below. Android will warn about installing outside
+            the Play Store; that is expected for a university research app.
+
+            Existing installs are offered this update automatically on their
+            next launch while on WiFi.
