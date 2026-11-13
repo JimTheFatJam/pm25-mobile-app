@@ -50,6 +50,44 @@ void main() {
     }
   });
 
+  test('the hero number is neutral text, never a contrast-darkened category hue', () {
+    // EPA yellow forced to 4.5:1 on white goes olive; at 72pt that looked
+    // like a mistake. The number now uses onSurface and the category is
+    // carried by the stripe and the filled chip instead.
+    for (final b in [Brightness.light, Brightness.dark]) {
+      final theme = buildTheme(b);
+      final yellow = categoryPalette(const Color(0xFFFFFF00), theme);
+      expect(contrastRatio(theme.colorScheme.onSurface, theme.colorScheme.surface), greaterThan(7),
+          reason: 'the value must be comfortably legible in $b');
+      // The raw scheme colour survives untouched for fills.
+      expect(yellow.raw, const Color(0xFFFFFF00));
+    }
+  });
+
+  test('a filled category chip is legible in every EPA colour', () {
+    // Each chip is a solid block of the scheme's own colour, so the text on
+    // top must be chosen per colour rather than fixed.
+    const epa = {
+      'Good': Color(0xFF00E400),
+      'Moderate': Color(0xFFFFFF00),
+      'Unhealthy for Sensitive Groups': Color(0xFFFF7E00),
+      'Unhealthy': Color(0xFFFF0000),
+      'Very Unhealthy': Color(0xFF8F3F97),
+      'Hazardous': Color(0xFF7E0023),
+    };
+    for (final theme in [buildTheme(Brightness.light), buildTheme(Brightness.dark)]) {
+      epa.forEach((name, color) {
+        final p = categoryPalette(color, theme);
+        expect(contrastRatio(p.onRaw, p.raw), greaterThanOrEqualTo(4.5), reason: '$name chip text');
+        expect(p.onRaw == Colors.black || p.onRaw == Colors.white, isTrue);
+      });
+    }
+    // Sanity: the two extremes really do pick different text colours.
+    final light = buildTheme(Brightness.light);
+    expect(categoryPalette(const Color(0xFFFFFF00), light).onRaw, Colors.black);
+    expect(categoryPalette(const Color(0xFF7E0023), light).onRaw, Colors.white);
+  });
+
   testWidgets('header toggle switches the whole app between light and dark without touching the reading', (tester) async {
     tester.view.physicalSize = const Size(1080, 3600);
     tester.view.devicePixelRatio = 1.0;

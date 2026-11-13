@@ -171,7 +171,7 @@ class ReadingHeadline extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(width: 6, color: palette.raw),
+            Container(width: 8, color: palette.raw),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
@@ -204,10 +204,23 @@ class ReadingHeadline extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
+                          // Deliberately the ordinary text colour, not the
+                          // category colour. Forcing a category hue to 4.5:1
+                          // against white turns EPA yellow olive and EPA
+                          // maroon muddy -- at 72pt that reads as a styling
+                          // mistake rather than a signal. The category is
+                          // carried by the edge stripe and the solid chip
+                          // beside this number, both of which can use the
+                          // scheme's exact colour because nothing is read
+                          // through them.
                           Text(reading.pm25!.toStringAsFixed(1),
                               key: const Key('pm25-value'),
                               style: theme.textTheme.displayLarge?.copyWith(
-                                  fontSize: 72, fontWeight: FontWeight.w800, height: 1.0, color: palette.accent, letterSpacing: -2.5)),
+                                  fontSize: 72,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.0,
+                                  color: theme.colorScheme.onSurface,
+                                  letterSpacing: -2.5)),
                           const SizedBox(width: 8),
                           Text(reading.units,
                               style: theme.textTheme.titleLarge?.copyWith(color: theme.app.muted, fontWeight: FontWeight.w600)),
@@ -252,25 +265,22 @@ class CategoryBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Solid fill in the scheme's exact colour, with black or white text
+    // chosen by measured contrast. A filled chip shows the category more
+    // strongly than a tinted one, and because the colour is a background
+    // here it never has to be darkened to stay legible -- so EPA yellow
+    // looks like yellow instead of olive.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: palette.tint,
+        color: palette.raw,
         borderRadius: BorderRadius.circular(kInsetRadius),
-        border: Border.all(color: palette.outline),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: palette.raw, shape: BoxShape.circle)),
-          const SizedBox(width: 7),
-          Flexible(
-            child: Text(label.toUpperCase(),
-                key: const Key('category-label'),
-                style: theme.textTheme.labelSmall?.copyWith(color: palette.accent, fontSize: 13, letterSpacing: 1.0)),
-          ),
-        ],
-      ),
+      child: Text(label.toUpperCase(),
+          key: const Key('category-label'),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelSmall?.copyWith(
+              color: palette.onRaw, fontSize: 13, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
     );
   }
 }

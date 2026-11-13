@@ -217,29 +217,49 @@ Color readableOn(Color text, Color surface) {
 /// gold for Moderate on white, not a block of yellow).
 @immutable
 class CategoryPalette {
-  const CategoryPalette({required this.raw, required this.accent, required this.tint, required this.outline});
+  const CategoryPalette({
+    required this.raw,
+    required this.accent,
+    required this.tint,
+    required this.outline,
+    required this.onRaw,
+  });
+
+  /// The scheme's own colour, exactly as the backend sent it. Safe as a
+  /// FILL (stripe, chip background, dot) because nothing has to be read
+  /// through it.
   final Color raw;
+
+  /// [raw] forced to >=4.5:1 against the card. Fine for small accents;
+  /// no longer used for the large value -- see categoryPalette.
   final Color accent;
+
+  /// [raw] blended into the card at low alpha, for inset backgrounds.
   final Color tint;
+
   final Color outline;
+
+  /// Black or white, whichever is readable ON [raw]. Lets the chip be a
+  /// solid block of the category colour with legible text.
+  final Color onRaw;
 }
+
+/// Picks black or white text for a filled swatch, by measured contrast
+/// rather than a luminance rule of thumb -- EPA yellow and EPA maroon sit
+/// on opposite sides of any fixed threshold.
+Color onColor(Color background) =>
+    contrastRatio(Colors.black, background) >= contrastRatio(Colors.white, background)
+        ? Colors.black
+        : Colors.white;
 
 CategoryPalette categoryPalette(Color raw, ThemeData theme) {
   final surface = theme.colorScheme.surface;
   final dark = theme.brightness == Brightness.dark;
   return CategoryPalette(
     raw: raw,
-    accent: readableOn(dark ? raw : _warmYellow(raw), surface),
-    tint: Color.alphaBlend(raw.withValues(alpha: dark ? 0.14 : 0.11), surface),
+    accent: readableOn(raw, surface),
+    tint: Color.alphaBlend(raw.withValues(alpha: dark ? 0.16 : 0.12), surface),
     outline: raw.withValues(alpha: dark ? 0.55 : 0.40),
+    onRaw: onColor(raw),
   );
-}
-
-/// Pure yellow (EPA "Moderate") darkened for contrast turns olive; nudging
-/// its hue a little toward amber first gives a restrained gold instead.
-/// Only yellows are touched; every other category keeps its exact hue.
-Color _warmYellow(Color c) {
-  final hsl = HSLColor.fromColor(c);
-  if (hsl.hue < 48 || hsl.hue > 72 || hsl.saturation < 0.5) return c;
-  return hsl.withHue(hsl.hue - 14).withSaturation((hsl.saturation * 0.9).clamp(0.0, 1.0)).toColor();
 }
